@@ -24,6 +24,17 @@
 #include "../include/devconst.h"
 
 
+__device__
+double maxcompglob (double a, double b)
+{
+    return (a < b) ? b : a;
+}
+
+__device__
+double mincompglob (double a, double b) {
+    return (a > b) ? b : a;
+}
+
 /**
  * @brief      Inverse Genuchten conversion of soil moisture - pressure
  *
@@ -42,7 +53,7 @@ __global__ void vanGenuchtenInverse(double *theta, double *psi, int size)
         m = lambda/n;
 
         if (theta[i] < theta_S)
-            psi[i] = -(1/alpha) * pow(pow((theta_S-theta_R)/(theta[i]-theta_R), 1/m) - 1.0, 1/n) 
+            psi[i] = -(1/alpha) * pow(pow((theta_S-theta_R)/(theta[i]-theta_R), 1/m) - 1.0, 1/n)
                                 * 0.01; // [m]
         else
             psi[i] = 0;
@@ -65,7 +76,7 @@ __global__ void vanGenuchtenInverse(double *theta, double *psi, int size)
  * @param      psi    Pressure head [L]
  * @param[in]  size   Size of the domain
  */
-__global__ 
+__global__
 void vanGenuchten(double *C, double *theta, double *Ksat, double *K, double *psi, int3 globsize)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -120,7 +131,7 @@ void vanGenuchten(double *C, double *theta, double *Ksat, double *K, double *psi
  * @param[in]  sizey      The sizeof domain in y-direction
  * @param[in]  sizez      The sizeof domain in z-direction
  */
-__global__ 
+__global__
 void SubsurfaceSetBoundaryConditionType(int *west_bc, int *east_bc, int *south_bc, int *north_bc,
                                         int *top_bc, int *bottom_bc, int3 globsize)
 {
@@ -171,7 +182,7 @@ void SubsurfaceSetBoundaryConditionType(int *west_bc, int *east_bc, int *south_b
  * @param[in]  sizex    Domain size in x-direction
  * @param[in]  sizey    Domain size in y-direction
  */
-__global__ 
+__global__
 void EstimateFluxes(double *ph, double *hpoten, double *qcapa, double *psinp1m, double *knp1m,
                     double ppt, double et, int3 globsize)
 {
@@ -197,12 +208,12 @@ void EstimateFluxes(double *ph, double *hpoten, double *qcapa, double *psinp1m, 
  * @param      topbc     The top boundary condition
  * @param      topqflux  The flux go through top soil layer
  * @param      psinp1m   Pressure head at n+1, m [L]
- * @param      Psi_top   Pressure head at top layer [L]
+ * @param      thetan    Soil moisture at n [-]
  * @param[in]  globsize  Size of the global domain
  */
-__global__ 
-void IdentifyTopBoundary(double *hpoten, double *qcapa, int *topbc, double *topqflux, 
-                         double *psinp1m, double *Psi_top, int3 globsize)
+__global__
+void IdentifyTopBoundary(double *hpoten, double *qcapa, int *topbc, double *topqflux,
+                         double *thetan, double *ksat, int3 globsize)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int sizex = globsize.x;
@@ -210,24 +221,17 @@ void IdentifyTopBoundary(double *hpoten, double *qcapa, int *topbc, double *topq
 
     while (tid < sizex * sizey)
     {
+        topbc[tid] = 1;
         if (hpoten[tid] > 0.0)
         {
             if (hpoten[tid]/dt > qcapa[tid])
-            {
-                topbc[tid] = 0;
-                Psi_top[tid] = hpoten[tid];
-            } else {
-                topbc[tid] = 1;
-                topqflux[tid] = hpoten[tid]/dt;
-            }
+                topqflux[tid] = mincompglob(qcapa[tid], (theta_S - thetan[tid]) * dz / dt);
+            else
+                topqflux[tid] = mincompglob(hpoten[tid]/dt, (theta_S - thetan[tid]) * dz / dt);
+
+            topqflux[tid] = mincompglob(topqflux[tid], ksat[tid] * dt);
         } else {
-            if (psinp1m[tid] > air_dry) {
-                topbc[tid] = 1;
-                topqflux[tid] = hpoten[tid]/dt;
-            } else {
-                topbc[tid] = 0;
-                Psi_top[tid] = air_dry + 0.1;
-            }
+          topqflux[tid] = hpoten[tid]/dt;
         }
 
         // Update threads if vector is long
@@ -254,7 +258,7 @@ void PreRunningFlowModel(ProjectClass *project, SubsurfaceFlowClass * &subsurfac
     {
         // If any saving any data is switched on, check if output folder exist
         struct stat st = {0};
-        if (stat(project->folderoutput, &st) == -1) 
+        if (stat(project->folderoutput, &st) == -1)
         {
             mkdir(project->folderoutput, 0700);
         }
@@ -265,8 +269,8 @@ void PreRunningFlowModel(ProjectClass *project, SubsurfaceFlowClass * &subsurfac
         printf("------------------ \n");
 
         // Convert pressure head (psi) to moisture (theta)
-        vanGenuchten<<<TSZ,BSZ>>>(subsurface_dev->cnp1m, subsurface_dev->thetan, 
-                                  subsurface_dev->ksat, subsurface_dev->knp1m, 
+        vanGenuchten<<<TSZ,BSZ>>>(subsurface_dev->cnp1m, subsurface_dev->thetan,
+                                  subsurface_dev->ksat, subsurface_dev->knp1m,
                                   subsurface_dev->psin, globsize );
         cudaCheckError("vanGenuchten");
     }

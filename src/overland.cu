@@ -25,7 +25,8 @@
 #include "../include/global.h"
 
 
-__device__ double maxcompolf (double a, double b)
+__device__ 
+double maxcompolf (double a, double b)
 {
     return (a < b) ? b : a;
 }
@@ -39,8 +40,8 @@ __device__ double maxcompolf (double a, double b)
  * @param      ztopo       The ztopo
  * @param[in]  size        The size
  */
-__global__ void WaterElevationOverland(double *waterelev, double *waterdepth, double *ztopo,
-                int size)
+__global__ 
+void WaterElevationOverland(double *waterelev, double *waterdepth, double *ztopo, int size)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     while (tid < size)
@@ -71,9 +72,10 @@ __global__ void WaterElevationOverland(double *waterelev, double *waterdepth, do
  * @param[in]  infil      The infil
  * @param[in]  globsize   The globsize
  */
-__global__ void SetUpLinearSystemsOverland(double *a2d, double *rhs2d, double *waterelev,
-                double *ztopo, double *kwest, double *keast, double *ksouth, double *knorth,
-                double ppt, double et, double infil, int3 globsize)
+__global__ 
+void SetUpLinearSystemsOverland(double *a2d, double *rhs2d, double *waterelev, double *ztopo,
+                                double *kwest, double *keast, double *ksouth, double *knorth,
+                                double ppt, double et, double infil, int3 globsize)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int sizex = globsize.x;
@@ -174,8 +176,9 @@ __global__ void SetUpLinearSystemsOverland(double *a2d, double *rhs2d, double *w
 
 
 
-__global__ void UpdateKOverland(double *Hs, double *h, double *mann, double *kw, double *ke,
-                double *ks, double *kn, int3 globsize )
+__global__ 
+void UpdateKOverland(double *Hs, double *h, double *mann, double *kw, double *ke, double *ks,
+                     double *kn, int3 globsize )
 {
     int i0 = blockIdx.x * blockDim.x + threadIdx.x;
     int j0 = blockIdx.y * blockDim.y + threadIdx.y;
@@ -352,7 +355,8 @@ __global__ void UpdateKOverland(double *Hs, double *h, double *mann, double *kw,
 }
 
 
-__global__ void WaterDepthOverland(double *waterelev, double *waterdepth, double *ztopo, int size)
+__global__ 
+void WaterDepthOverland(double *waterelev, double *waterdepth, double *ztopo, int size)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     

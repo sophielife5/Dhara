@@ -32,51 +32,57 @@ __device__ double maxcompssf (double a, double b)
 
 
 
-__device__ void HydraulicConductivityAtInterface(double *knp1m, double *ke, double *kw, 
-                double *kn, double *ks, double *ku, double *kd, int glob_ind, int i, int j, int k,
-                int3 globsize)
+__device__
+void HydraulicConductivityAtInterface(double *knp1m, double *ke, double *kw, double *kn, 
+                                      double *ks, double *ku, double *kd, int glob_ind, 
+                                      int i, int j, int k, int3 globsize)
 {
     int sizex  = globsize.x;
     int sizey  = globsize.y;
     int sizez  = globsize.z;
     int sizexy = sizex * sizey;
 
-    if ( k==0 || k==sizez-1 )
-    {
-        // top and bottom
-        *ku = knp1m[glob_ind];
-        *kd = knp1m[glob_ind];
-    } else {
-        *ku = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind+sizexy]);
-        *kd = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind-sizexy]);
-    }
+    // in z-direction
+    if (k == 0) 
+        *kd = 0;
+    else
+        *kd = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind - sizexy]);
+
+    if (k == sizez-1)
+        *ku = 0;
+    else
+        *ku = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind + sizexy]);
+
+    // in y-direction
+    if (j == 0) 
+        *ks = 0;
+    else
+        *ks = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind - sizex]);
     
-    if ( j==0 || j==sizey-1 )
-    {
-        // north and south
-        *kn = knp1m[glob_ind];
-        *ks = knp1m[glob_ind];
-    } else {
-        *kn = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind+sizex]);
-        *ks = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind-sizex]);
-    }
+    if (j == sizey-1) 
+        *kn = 0;
+    else
+        *kn = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind + sizex]);
+
+    // in x-direction
+    if (i == 0)
+        *kw = 0;
+    else
+        *kw = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind - 1]);
     
-    if ( i==0 || i==sizex-1 )
-    {
-        // east and west
-        *ke = knp1m[glob_ind];
-        *kw = knp1m[glob_ind];
-    } else {
-        *ke = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind+1]);
-        *kw = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind-1]);
-    }
+    if (i == sizex-1) 
+        *ke = 0;
+    else
+        *ke = 0.5 * (knp1m[glob_ind] + knp1m[glob_ind + 1]);
 }
 
 
 
-__device__ void SetUpBlockMatrixSubsurface(double *a3d, double *thetanp1m, double *cnp1m, 
-                double dx2inv, double dy2inv, double dz2inv, double ke, double kw, double kn,
-                double ks, double ku, double kd, int tid, int glob_ind, int k, int3 globsize)
+__device__ 
+void SetUpBlockMatrixSubsurface(double *a3d, double *thetanp1m, double *cnp1m, double dx2inv,
+                                double dy2inv, double dz2inv, double ke, double kw, double kn,
+                                double ks, double ku, double kd, int tid, int glob_ind, int k, 
+                                int3 globsize)
 {
     int sizexyz = globsize.x * globsize.y * globsize.z;
 
@@ -97,25 +103,30 @@ __device__ void SetUpBlockMatrixSubsurface(double *a3d, double *thetanp1m, doubl
 
 
 
-__device__ void SetUpRightHandSideSubsurface(double *rhs, double *thetan, double *thetanp1m, 
-                double *psinp1m, double *psin, double ku, double kd, double *cnp1m, double *tr,
-                int *trmap, double *root, int tid, int i, int j, int k, int glob_ind, 
-                int3 globsize)
+__device__ 
+void SetUpRightHandSideSubsurface(double *rhs, double *thetan, double *thetanp1m, double *psinp1m,
+                                  double *psin, double ku, double kd, double *cnp1m, double *tr,
+                                  int *trmap, double *root, int tid, int i, int j, int k, 
+                                  int glob_ind, int3 globsize)
 {
     int id2d = j*globsize.x+i;
     int proc = trmap[id2d];
     double trodz = -tr[id2d] * root[proc*globsize.z+k] * 3.6 / dz;
-    rhs[tid] = Ss/dt * thetanp1m[glob_ind]/poros * psin[glob_ind] + cnp1m[glob_ind]/dt * psinp1m[glob_ind] - (ku - kd)/dz + (thetan[glob_ind] - thetanp1m[glob_ind])/dt + trodz/dt;
+    rhs[tid] = Ss/dt * thetanp1m[glob_ind]/poros * psin[glob_ind] 
+               + cnp1m[glob_ind]/dt * psinp1m[glob_ind] - (ku - kd)/dz 
+               + (thetan[glob_ind] - thetanp1m[glob_ind])/dt + trodz/dt;
 }
 
 
 
-__device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int *bbc, int *tbc,
-                int *sbc, int *nbc, int *wbc, int *ebc, double kd, double ku, double ks,
-                double kn, double kw, double ke, double dx2inv, double dy2inv, double dz2inv,
-                double *Psi_t, double *Psi_b, double *Psi_s, double *Psi_n, double *Psi_w,
-                double *Psi_e, double *qw, double *qe,  double *qs, double *qn, double *qt,
-                double *qb, int tid, int i, int j, int k, int3 globsize)
+__device__ 
+void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int *bbc, int *tbc, int *sbc, 
+                                       int *nbc, int *wbc, int *ebc, double kd, double ku, 
+                                       double ks, double kn, double kw, double ke, double dx2inv,
+                                       double dy2inv, double dz2inv, double *Psi_t, double *Psi_b,
+                                       double *Psi_s, double *Psi_n, double *Psi_w, double *Psi_e,
+                                       double *qw, double *qe,  double *qs, double *qn, double *qt,
+                                       double *qb, int tid, int i, int j, int k, int3 globsize)
 {
     int sizex   = globsize.x;
     int sizey   = globsize.y;
@@ -132,22 +143,15 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     if (tbc[bk] == 0)
     {   
         // Dirichlet Boundary
-        if (k == 1)
-        {   
-            // Inner points
-            a3d[0 * sizexyz + tid] = 0.0;
-            rhs[tid] -= dz2inv * kd * Psi_t[bk];
-        }
-
         if (k == 0)
         {   
-            // Outer points
+            // Modify matrix on LHS
             for (int r=0; r<7; r++) 
             {
                 if (r == 3)
-                    a3d[r * sizexyz + tid] = 1.0;
+                    a3d[r*sizexyz + tid] = 1.0;
                 else
-                    a3d[r * sizexyz + tid] = 0.0;
+                    a3d[r*sizexyz + tid] = 0.0;
             }
             rhs[tid] = Psi_t[bk];
         }
@@ -157,8 +161,7 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
         // Neumann Boundary
         if (k == 0) 
         {
-            a3d[3 * sizexyz + tid] += dz2inv * ku;
-            rhs[tid] += (dz - qt[bk]*dz/ku) * dz2inv * ku;
+            rhs[tid] += (-qt[bk]*dz) * dz2inv;
         }
     }
 
@@ -167,19 +170,14 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     if (bbc[bk] == 0)
     {   
         // Dirichlet Boundary
-        if (k == sizez-2)
-        {
-            a3d[6 * sizexyz + tid] = 0.0;
-            rhs[tid] -= dz2inv * ku * Psi_b[bk];
-        }
         if (k == sizez-1)
         {
             for (int r=0; r<7; r++)
             {
                 if (r == 3)
-                    a3d[r * sizexyz + tid] = 1.0;
+                    a3d[r*sizexyz + tid] = 1.0;
                 else
-                    a3d[r * sizexyz + tid] = 0.0;
+                    a3d[r*sizexyz + tid] = 0.0;
             }
             rhs[tid] = Psi_b[bk];
         }
@@ -190,8 +188,7 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
         if (k == sizez-1) 
         {
             qb[bk] = kd;
-            a3d[3 * sizexyz + tid] += dz2inv * kd;
-            rhs[tid] += (-dz + qb[bk] * dz / kd) * dz2inv * kd;
+            rhs[tid] += (qb[bk] * dz) * dz2inv;
         }
     }
 
@@ -200,16 +197,9 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     if (sbc[bj] == 0)
     {   
         // Dirichlet Boundary
-        if (j == 1)
-        {   
-            // Inner points
-            a3d[1 * sizexyz + tid] = 0.0;
-            rhs[tid] -= dy2inv * kn * Psi_s[bj];
-        }
-
         if (j == 0)
         {   
-            // Outer points
+            // Modify matrix on LHS
             for (int r=0; r<7; r++)
             {
                 if (r == 3)
@@ -225,8 +215,7 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
         // Neumann Boundary
         if (j == 0)
         {   qs[bj] = ks;
-            a3d[3 * sizexyz + tid] += dy2inv * ks;
-            rhs[tid] += (-qs[bj] * dy / ks) * dy2inv * ks;
+            rhs[tid] += (-qs[bj] * dy) * dy2inv;
         }
     }
 
@@ -235,15 +224,9 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     if (nbc[bj] == 0) 
     {   
         // Dirichlet Boundary
-        if (j == sizey-2)
-        {   // Inner points
-            a3d[5 * sizexyz + tid] = 0.0;
-            rhs[tid] -= dy2inv * ks * Psi_n[bj];
-        }
-
         if (j == sizey-1)
         {   
-            // Outer points
+            // Modify matrix on LHS
             for (int r=0; r<7; r++)
             {
                 if (r == 3)
@@ -259,8 +242,7 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
         // Neumann Boundary
         if (j == sizey-1) 
         {
-            a3d[3 * sizexyz + tid] += dy2inv * kn;
-            rhs[tid] += (qn[bj] * dy / kn) * dy2inv * kn;
+            rhs[tid] += (qn[bj] * dy) * dy2inv;
         }
     }
 
@@ -268,16 +250,9 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     // West face boundary conditions
     if (wbc[bi] == 0)
     {
-        if (i == 1)
-        {   
-            // Inner points
-            a3d[2 * sizexyz + tid] = 0.0;
-            rhs[tid] -= dx2inv * ke * Psi_w[bi];
-        }
-
         if (i == 0)
         {   
-            // Outer points
+            // Modify matrix on LHS
             for (int r=0; r<7; r++) 
             {
                 if (r == 3)
@@ -292,8 +267,7 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     {
         if (i == 0)
         {
-            a3d[3 * sizexyz + tid] += dx2inv * kw;
-            rhs[tid] += (-qw[bi] * dx / kw) * dx2inv * kw;
+            rhs[tid] += (-qw[bi] * dx) * dx2inv;
         }
     }
 
@@ -301,16 +275,9 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     // East face boundary conditions
     if (ebc[bi] == 0)
     {
-        if (i == sizex-2)
-        {   
-            // Inner points
-            a3d[4 * sizexyz + tid] = 0.0;
-            rhs[tid] -= dx2inv * kw * Psi_e[bi];
-        }
-
         if (i == sizex-1)
         {   
-            // Outer points
+            // Modify matrix on LHS
             for (int r=0; r<7; r++) 
             {
                 if (r == 3)
@@ -325,8 +292,7 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
     {
         if (i == sizex-1)
         {
-            a3d[3 * sizexyz + tid] += dx2inv * ke;
-            rhs[tid] += (qe[bi] * dx / ke) * dx2inv * ke;
+            rhs[tid] += (qe[bi] * dx) * dx2inv;
         }
     }
 }
@@ -340,7 +306,8 @@ __device__ void SetUpBoundaryConditionsSubsurface(double *a3d, double *rhs, int 
  * @param      TRmap     Map of process on the domain
  * @param[in]  globsize  Size of the global domain
  */
-__global__ void SendTranspirationToGrids(double *TR, double *TRroot, int *TRmap, int3 globsize)
+__global__ 
+void SendTranspirationToGrids(double *TR, double *TRroot, int *TRmap, int3 globsize)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int sizexy = globsize.x * globsize.y;    
@@ -357,12 +324,14 @@ __global__ void SendTranspirationToGrids(double *TR, double *TRroot, int *TRmap,
 }
 
 
-__global__ void SetUpLinearSystemsSubsurface(double *a3d, double *rhs, double *psinp1m, 
-                double *psin, double *thetanp1m, double *thetan, double *knp1m, double *cnp1m, 
-                int *wbc, int *ebc, int *sbc, int *nbc, int *tbc, int *bbc, double *psi_w,
-                double *psi_e, double *psi_s, double *psi_n, double *psi_t, double *psi_b,
-                double *qw, double *qe, double *qs, double *qn, double *qt, double *qb, 
-                double *tr, int *trmap, double *root, int3 globsize)
+__global__ 
+void SetUpLinearSystemsSubsurface(double *a3d, double *rhs, double *psinp1m, double *psin, 
+                                  double *thetanp1m, double *thetan, double *knp1m, double *cnp1m, 
+                                  int *wbc, int *ebc, int *sbc, int *nbc, int *tbc, int *bbc,
+                                  double *psi_w, double *psi_e, double *psi_s, double *psi_n,
+                                  double *psi_t, double *psi_b, double *qw, double *qe, double *qs,
+                                  double *qn, double *qt, double *qb, double *tr, int *trmap,
+                                  double *root, int3 globsize)
 {
     int tid     = threadIdx.x + blockIdx.x * blockDim.x;
     int sizex   = globsize.x;
@@ -408,8 +377,8 @@ __global__ void SetUpLinearSystemsSubsurface(double *a3d, double *rhs, double *p
 }
 
 
-__global__ void GetIterationDifference( double *psinp1m, double *psinp1mp1, double* deltam, 
-                int3 globsize)
+__global__ 
+void GetIterationDifference( double *psinp1m, double *psinp1mp1, double* deltam, int3 globsize)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int sizexyz = globsize.x * globsize.y * globsize.z;
@@ -424,7 +393,8 @@ __global__ void GetIterationDifference( double *psinp1m, double *psinp1mp1, doub
 
 
 
-__global__ void ModifiedPicardUpdate(double *psinp1m, double *psinp1mp1, int3 globsize)
+__global__ 
+void ModifiedPicardUpdate(double *psinp1m, double *psinp1mp1, int3 globsize)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int sizexyz = globsize.x * globsize.y * globsize.z;    
@@ -439,8 +409,10 @@ __global__ void ModifiedPicardUpdate(double *psinp1m, double *psinp1mp1, int3 gl
 
 
 
-__global__ void SubsurfaceEstimateInfiltrationPonding(double *psinp1mp1, double *knp1m, 
-                double *qt, double *qss, double *psi_top, double *ph, int *tbc, int3 globsize)
+__global__ 
+void SubsurfaceEstimateInfiltrationPonding(double *psinp1mp1, double *knp1m, double *qt, 
+                                           double *qss, double *psi_top, double *ph, int *tbc, 
+                                           int3 globsize)
 {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     int sizex = globsize.x;
@@ -465,11 +437,12 @@ __global__ void SubsurfaceEstimateInfiltrationPonding(double *psinp1mp1, double 
 }
 
 
-void GatherTranspirationDomain(ProjectClass *project, VerticalCanopyClass *vertcanopies,
+void GatherTranspirationDomain(ProjectClass *project, 
+                               VerticalCanopyClass *vertcanopies,
                                SubsurfaceFlowClass *subsurface_host, 
                                SubsurfaceFlowClass *subsurface_dev,
-                               int rank, int procsize, int3 globsize, int3 domsize, int2 topolsize,
-                               int2 topolindex, MPI_Comm *cartComm)
+                               int rank, int procsize, int3 globsize, int3 domsize, 
+                               int2 topolsize, int2 topolindex, MPI_Comm *cartComm)
 {
     int isroot = rank == MPI_MASTER_RANK;
 
@@ -546,11 +519,11 @@ void SubsurfaceFlowModel(TimeForcingClass * &timeforcings, OverlandFlowClass * &
         // Boundary switching
         IdentifyTopBoundary<<<TSZ,BSZ>>>(overland_dev->hpoten, overland_dev->qcapa,
                            subsurface_dev->bct, subsurface_dev->bcqt,
-                           subsurface_dev->psinp1m, subsurface_dev->bcpsit, globsize );
+                           subsurface_dev->thetan, subsurface_dev->ksat, globsize );
         cudaCheckError("IdentifyTopBoundary");
 
         // Set A, b, and boundary conditions
-        SetUpLinearSystemsSubsurface<<<TSZ, BSZ>>>(subsurface_dev->a3d, subsurface_dev->rhs3d,
+        SetUpLinearSystemsSubsurface<<<TSZ,BSZ>>>(subsurface_dev->a3d, subsurface_dev->rhs3d,
                                     subsurface_dev->psinp1m, subsurface_dev->psin,
                                     subsurface_dev->thetanp1m, subsurface_dev->thetan,
                                     subsurface_dev->knp1m, subsurface_dev->cnp1m,
